@@ -1,158 +1,130 @@
 ---
 name: zc
-description: Reach the user from the terminal using the `zc` CLI (zcoms), over Telegram (`zc tg`) and optionally WhatsApp (`zc wa`) — send notifications, ask a question and block until they reply (Telegram), hold a scriptable back-and-forth, message a WhatsApp contact and read unread WhatsApp, and send or download files. Use this whenever you need to tell the user a task finished or is blocked, get a decision or piece of information you cannot proceed without while they are away from the keyboard, or have an ongoing conversation with them. Trigger it even when the user just says things like "let me know on Telegram", "text me when done", "message me on WhatsApp", "ask me on my phone", or "ping me if you get stuck".
+description: Reach the user from the terminal using the `zc` CLI (zcoms), over Telegram (`zc tg`) and WhatsApp (`zc wa`). Send notifications, ask a question and block until they reply (Telegram), hold a scriptable back-and-forth, post updates to a project's group, create and read group chats, and send or download files. Use this whenever you need to tell the user a task finished or is blocked, get a decision you cannot proceed without while they are away from the keyboard, or have an ongoing conversation with them. Trigger it even when the user just says things like "let me know on Telegram", "text me when done", "message me on WhatsApp", "ask me on my phone", or "ping me if you get stuck".
 ---
 
-# zc — Telegram & WhatsApp channel to the user
+# zc: Telegram and WhatsApp channel to the user
 
-[zcoms](https://github.com/Zouriel/zcoms) is a small comms CLI (`zc`) the user installed so you can
-reach them when they're away from the keyboard, over **Telegram** (`zc tg`) and optionally
-**WhatsApp** (`zc wa`). Use it to keep them in the loop on long tasks and to get input you can't
-proceed without. **Telegram is the primary interactive channel** — it's the only one with a
-blocking `ask`/`chat` (wait for a reply in one call); WhatsApp is send + read-unread only.
+[zcoms](https://github.com/Zouriel/zcoms) is a comms CLI (`zc`) the user installed so you can reach
+them when they are away from the keyboard. **Telegram** (`zc tg`) is the interactive channel (the
+only one with a blocking `ask`/`chat`); **WhatsApp** (`zc wa`) is send, read and groups.
+
+## Routing rule: where updates to the owner go (check this first)
+
+Before sending the owner an update (done, blocked, progress), look for a **`.zcoms`** file in the
+current directory or any parent:
+
+```sh
+d=$PWD; while [ "$d" != / ] && [ ! -f "$d/.zcoms" ]; do d=$(dirname "$d"); done; [ -f "$d/.zcoms" ] && echo bound
+```
+
+- **Found:** the folder is bound to a project group. Post there, running from inside that folder:
+  ```sh
+  zc project say "build is green, PR is up"
+  ```
+- **Not found:** message the owner directly:
+  ```sh
+  zc tg send @ZourielCorbet "build is green, PR is up"
+  ```
+
+Questions you need answered (`ask`/`chat`) still go to the owner directly on Telegram.
 
 ## Setup this skill assumes
 
-This skill drives the `zc` binary from zcoms. Before relying on it, the following must be true
-(install/links: <https://github.com/Zouriel/zcoms>):
+- `zc` is on `PATH`. Most commands route through the **comms daemon** (`zcoms-daemon.service`),
+  which owns the Telegram session and runs WhatsApp in process. `zc wa …`, `zc tg group …`,
+  `zc group` and `zc project` need the daemon (and the agent, for `group`/`project`) running.
+- Telegram credentials (`TG_API_ID` / `TG_API_HASH`) are only needed when the daemon is down and
+  `zc tg` opens its own session. `zc` loads a `.env` from the **current working directory**
+  (overriding the environment), else uses the environment, else credentials baked into the
+  build. If you hit "missing TG_API_ID or TG_API_HASH", `cd` to the folder holding the `.env` first.
+- Recipients for `zc tg`: `@username`, a contact name (`zc contacts list`), a group name, or a
+  chat id. The owner is `@ZourielCorbet`.
 
-- The `zc` binary is installed and on `PATH` (or you know its full path).
-- It's logged in once (`zc tg login`) — check with `zc tg auth`, which prints the logged-in account.
-- You know the **recipient** — the user's own Telegram `@username` (or a numeric chat id). Throughout
-  this skill that's written as `@user`; substitute the real handle the user gave you.
-- Credentials (`TG_API_ID` / `TG_API_HASH`) are available — `zc` reads a `.env` from the **current
-  working directory**, so if they live in a project folder, `cd` there first:
+## Telegram (`zc tg`)
 
-  ```sh
-  cd /path/to/zcoms && zc tg send @user "your message"
-  ```
-
-> If you don't yet know the user's `@username` or where the credentials live, ask once and remember it.
-
-## Telegram commands (`zc tg`)
-
-### `zc tg send` — fire-and-forget notification
 ```sh
-zc tg send @user "build finished ✅"
-```
-Returns immediately. Use it when a task is **done**, or when you've hit a **blocker** you can't
-resolve and are stopping. One-way — you won't see a reply. Trust the `Message sent ✅` line on
-stdout as confirmation.
-
-### `zc tg ask` — send a question and BLOCK until they answer
-```sh
-answer=$(zc tg ask @user "use postgres or sqlite for this?")
-echo "user said: $answer"
-```
-Sends the question, then **blocks indefinitely** (no timeout) until the user replies in Telegram.
-Their reply text is printed to **stdout** — capture it with `$(...)` and act on it.
-
-### `zc tg chat` — scriptable back-and-forth (recommended for conversation)
-One round-trip per call, then it exits — so you can loop it without holding the lock:
-```sh
-# Send and wait for the reply (prints the reply to stdout)
-reply=$(zc tg chat @user "ready for the next step?" --timeout 5m)
-
-# Just wait for the user's next message (let them start)
-zc tg chat @user --timeout 10m
-
-# Snapshot the last 10 messages (catch up on context), no send/wait
-zc tg chat @user --read 10
-
-# Structured output you can parse reliably
-zc tg chat @user "still there?" --json --timeout 2m
-```
-Flags: `-w/--wait` (wait for reply after sending, default on), `-t/--timeout <dur>` (e.g. `90s`, `5m`;
-`0` = no limit), `-r/--read <N>` (snapshot mode), `--json` (one JSON line per message:
-`message_id`, `sender`, `kind`, `text`, `file`), `--download` (fetch media in the reply — off by
-default). Prefer a bounded `--timeout` so a silent user can't hang the session lock forever.
-
-### `zc tg send-file` — send a file
-```sh
-zc tg send-file @user /path/to/report.pdf "here's the report"
-```
-The message type (photo/video/audio/document) is picked from the file extension. It waits for the
-upload to finish before returning, so it's safe in scripts.
-
-### `zc tg download` — fetch received media on purpose
-Incoming media is **never** downloaded automatically (downloading arbitrary files is a security
-risk). To get a file the user sent, list and pick it:
-```sh
-zc tg download @user            # interactive: newest first, Enter = newest, q = cancel
-zc tg download @user --pick 0   # non-interactive: download the newest
-zc tg download @user --json     # list available media without downloading
-```
-Files land in `~/Downloads/zcoms/<chat>/`. **Only download/open files the user themselves
-sent.** If media came from anyone else, ask the user before fetching or opening it.
-
-### `zc tg tail` / `zc tg chats` — interactive (for the human, not scripts)
-`zc tg tail @user` is a live REPL (type to send, paste a file path to send it); `zc tg chats` lists recent
-chats. These block and are meant for a person at a terminal — for automation use `chat`/`send`/`ask`.
-
-## WhatsApp commands (`zc wa`)
-
-zcoms can also talk over **WhatsApp**, through a paired [Baileys](https://github.com/WhiskeySockets/Baileys)
-sidecar. This is **optional** and runs over a local socket — separate from Telegram — so `zc wa`
-works even while a `zc tg` session is up and is **not** bound by the TDLib single-instance lock
-(see Rules below).
-
-It's only usable when WhatsApp is enabled in `agent-settings.json` **and** the sidecar (wa-bridge)
-is running and paired — check first:
-```sh
-zc wa status      # "WhatsApp: on" + "Sidecar: connected (paired, …)", or tells you what's missing
-zc wa login       # shows a QR to link a device, if not paired yet (--wait <dur>, default 90s)
+zc tg send @user "build finished"                 # fire and forget; trust "Message sent ✅"
+answer=$(zc tg ask @user "postgres or sqlite?")    # blocks with NO timeout; reply on stdout
+reply=$(zc tg chat @user "next step?" --timeout 5m)  # one round trip, then exits
+zc tg chat @user --timeout 10m                    # just wait for their next message
+zc tg chat @user --read 10                        # snapshot the last 10 messages
+zc tg send-file @user ./report.pdf "the report"   # type picked from extension; waits for upload
 ```
 
-Recipients are a **phone number** (any format — spaces/dashes/`+` are stripped, e.g. `+960 798-8692`)
-or a full **JID** (`…@s.whatsapp.net` / `…@lid`) — **not** a Telegram `@username`.
+`chat` flags: `-w/--wait` (default on), `-t/--timeout <dur>` (`0` = no limit), `-r/--read <N>`,
+`--json` (one line per message: `message_id`, `sender`, `kind`, `text`, `file`), `--download`.
+Prefer `chat --timeout` over `ask` when you want a bound. A non-text `ask` reply comes back as
+`[messageType]`; use `chat --json` to see details.
 
-### `zc wa send` — fire-and-forget WhatsApp message
+**Daemon-only-off commands:** `zc tg auth`, `login`, `logout`, `chats`, `tail` and `download` need
+their own TDLib session, so they refuse while the daemon runs (stop it with
+`systemctl --user stop zcoms-daemon`; never do that from inside a bridge session).
+`zc tg download @user [--pick 0] [--json] [-n 30]` saves to `~/Downloads/zcoms/<chat>/`. Only
+download files the user themselves sent; ask before fetching anyone else's media.
+
+## WhatsApp (`zc wa`)
+
+Runs in process (whatsmeow) inside the daemon. Recipients: a phone number (any format), a JID, a
+contact name, or a group name; not a Telegram `@username`.
+
 ```sh
-zc wa send +9607988692 "build finished ✅"
+zc wa status                                   # connection state; pair via console Connectors page
+zc wa send +9607988692 "build finished"
+zc wa send-file +9607988692 ./report.pdf "the report"
+zc wa read +9607988692 [count]                 # recent history (--count, default 10)
+zc wa unread [--json]                          # unread 1:1s: chat_id, sender, text, file, msg_id
 ```
-One-way; returns once the sidecar accepts it. Trust the `Message sent ✅` line on stdout.
 
-### `zc wa send-file` — send a file on WhatsApp
+No blocking wait on WhatsApp: to get a reply, poll `zc wa unread`. It is an unofficial client, so
+keep volume low and prefer Telegram for anything chatty.
+
+## Groups (`zc tg group`, `zc wa group`)
+
+The same subcommands exist under both. A group is named by its title (as `group list` shows it),
+an alias, or its native id.
+
 ```sh
-zc wa send-file +9607988692 /path/to/report.pdf "here's the report"
+zc tg group create "Acme build" Ibrahim Aisha  # members are contacts; the OWNER IS ALWAYS ADDED
+zc tg group add "Acme build" Hassan            # add members
+zc tg group list                               # groups this account is in ([on], [follow] flags)
+zc tg group members "Acme build"
+zc tg group view "Acme build" --limit 10       # latest N (default 50)
+zc tg group view "Acme build" --around 1234    # N messages either side of a message id
+zc tg group view "Acme build" --follow         # stay attached: print new, send typed lines
+zc tg send "Acme build" "deploy is green"      # plain send works by group name too
 ```
-Recipient + path are required; the caption is optional.
 
-### `zc wa unread` — read unread WhatsApp 1:1 messages
-WhatsApp has **no blocking `ask`/`chat`** like Telegram. To see what's come in, read the sidecar's
-mirror of unread 1:1s; to "wait" for a reply, **poll** this:
+Telegram groups are created as supergroups. Set the owner once with `zc config owner <contact>`
+(no argument shows it); it must be a contact in `zc contacts`.
+
+**Agent in groups:** every group is off until turned on. `zc group on "<group>"` lets anyone there
+call the agent (an @mention or a reply to it); it answers briefly, web search only.
+`zc group off "<group>"` stops it. Add `--wa` for a WhatsApp group.
+
+## Projects (`zc project`)
+
+Binds a repo folder to a group; the agent answers calls there from the code (read only). Run from
+inside the folder (any subdirectory works):
+
 ```sh
-zc wa unread            # human-readable: "Sender [chat_id]: text"  (+ "[file: …]" when attached)
-zc wa unread --json     # one JSON line per msg: chat_id, sender, text, file, msg_id
+zc project init [--group <name>] [--follow on|off] [--wa]  # prompts for anything missing
+zc project say "<text>"              # post an update to the project's group
+zc project status | sync | remove [--purge]
+zc project members | alias add|rm <member> <alias>
+zc project tasks [done|drop <id> | assign <id> <member>]
+zc project follow on|off             # store messages + morning standup
+zc project standup now
 ```
 
-> ⚠️ WhatsApp here runs through **Baileys**, an *unofficial* client — using it can get the paired
-> number **banned**. Keep volume low and prefer Telegram for anything chatty.
+`init` writes the `.zcoms` file. Binding and turning groups on are owner actions: only run
+`project init`, `group on` or `config owner` when the user asks.
 
-## When to use which
+## Rules and gotchas
 
-- **`zc tg send`** — a task is done, or you've hit a wall and are stopping. Notify and move on.
-- **`zc tg ask`** — you need one decision/answer to continue and the user isn't at the machine. Ask a
-  tight, specific question (offer concrete options), wait, then proceed on the answer.
-- **`zc tg chat`** — an ongoing exchange, or when you want a timeout / machine-readable output / to
-  just listen for the user's next message. This is the most flexible and the safest for loops.
-- **`zc tg send-file` / `zc tg download`** — moving files to/from the user.
-- **Telegram vs WhatsApp** — prefer **Telegram** for anything interactive: it's the only channel
-  with a blocking `ask`/`chat`, so you wait for a reply in one call. Reach for **WhatsApp**
-  (`zc wa`) only when the user asked to be messaged there or the recipient is a WhatsApp contact —
-  there's no blocking wait, so `zc wa send` and (if you need the reply) poll `zc wa unread`.
-
-Don't stall a task on a choice only the user can make — ask. But batch context into one good
-question rather than peppering them with many.
-
-## Rules / gotchas
-
-- **One Telegram instance at a time.** TDLib locks its session database; only one `zc tg` command
-  can run at once. A blocked `zc tg ask`/`zc tg chat` holds that lock — never launch a second `zc tg`
-  command while one is running, or it fails with a "file already in use" lock error. (`zc wa` is
-  exempt — it goes through the sidecar socket, not TDLib, so it runs fine alongside a `zc tg` session.)
-- Because `zc tg ask` blocks with **no timeout**, only use it when you genuinely need the answer.
-  Prefer `zc tg chat … --timeout` when you want a bound.
-- A `zc tg ask` reply that isn't text (a photo, sticker, …) comes back as `[messageType]`. Use
-  `zc tg chat --json` if you need to distinguish media and get its details.
-- Quick health check: `zc tg auth` (prints the logged-in account, exits 0).
+- **One Telegram session at a time** when the daemon is down: a blocked `zc tg ask`/`chat` holds
+  the TDLib lock, so do not start a second `zc tg` command meanwhile. With the daemon up, calls
+  go through it.
+- `zc tg ask` never times out; use it only when you truly need the answer.
+- Batch context into one good question rather than many small ones.
+- No em or en dashes in messages to the owner; use commas, colons or periods.
