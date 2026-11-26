@@ -18,10 +18,18 @@ current directory or any parent:
 d=$PWD; while [ "$d" != / ] && [ ! -f "$d/.zcoms" ]; do d=$(dirname "$d"); done; [ -f "$d/.zcoms" ] && echo bound
 ```
 
-- **Found:** the folder is bound to a project group. Post there, running from inside that folder:
+- **Found:** the folder is bound to a project group. Post there, running from inside that folder.
+  Keep the main chat for milestones (done, blocked, a decision needed); put screenshots, files
+  and step-by-step progress in a thread named after the piece of work (Telegram):
   ```sh
-  zc project say "build is green, PR is up"
+  zc project say "build is green, PR is up"                          # milestone: main chat
+  zc project say --thread "login form" "step 2: validation wired"    # progress: thread
+  zc project say --thread "login form" --file /tmp/login.png "new login form"
   ```
+  **Finished UI work:** take a screenshot of the running app and post it to the work's thread,
+  e.g. `npx playwright screenshot --full-page http://localhost:5173/login /tmp/login.png`, then
+  `zc project say --thread "<work>" --file /tmp/login.png "<what changed>"`. Only screenshot pages
+  that need no login unless the repo says how to sign in.
 - **Not found:** message the owner directly:
   ```sh
   zc tg send @ZourielCorbet "build is green, PR is up"
@@ -50,7 +58,12 @@ reply=$(zc tg chat @user "next step?" --timeout 5m)  # one round trip, then exit
 zc tg chat @user --timeout 10m                    # just wait for their next message
 zc tg chat @user --read 10                        # snapshot the last 10 messages
 zc tg send-file @user ./report.pdf "the report"   # type picked from extension; waits for upload
+zc tg send "Acme build" --thread "login bug" "on it"            # post in a group thread
+zc tg send-file "Acme build" ./shot.png --thread 12 "screenshot" # thread by id or name
 ```
+
+Files are capped at 20 MB; images go as photos, other files as documents. `--thread` takes a
+topic id or name (see `zc tg group topics`) and needs the daemon.
 
 `chat` flags: `-w/--wait` (default on), `-t/--timeout <dur>` (`0` = no limit), `-r/--read <N>`,
 `--json` (one line per message: `message_id`, `sender`, `kind`, `text`, `file`), `--download`.
@@ -93,13 +106,24 @@ zc tg group view "Acme build" --limit 10       # latest N (default 50)
 zc tg group view "Acme build" --around 1234    # N messages either side of a message id
 zc tg group view "Acme build" --follow         # stay attached: print new, send typed lines
 zc tg send "Acme build" "deploy is green"      # plain send works by group name too
+zc tg group topic "Acme build" "login bug"     # start a thread (forum topic); prints its id
+zc tg group topics "Acme build"                # list threads (id, name)
+zc tg group create "Acme build" Ibrahim --topics  # create with threads on from the start
 ```
+
+Threads are Telegram forum topics. `group topic` turns topics on by itself only when this account
+created the group; otherwise an admin has to enable them in the group settings. Basic groups are
+never upgraded. WhatsApp groups have no threads: `zc wa group topic` says so, and a `--thread`
+send on WhatsApp goes to the group itself.
 
 Telegram groups are created as supergroups. Set the owner once with `zc config owner <contact>`
 (no argument shows it); it must be a contact in `zc contacts`.
 
 **Agent in groups:** every group is off until turned on. `zc group on "<group>"` lets anyone there
-call the agent (an @mention or a reply to it); it answers briefly, web search only.
+call the agent (an @mention or a reply to it); it answers briefly, web search only, in the thread
+it was called from. Callers can ask it to "start a thread for X": it opens one thread in that group
+and answers there. In project groups it can also send screenshots of the running app or repo files
+back to the caller (never secrets, at most 5 files of 20 MB).
 `zc group off "<group>"` stops it. Add `--wa` for a WhatsApp group.
 
 ## Projects (`zc project`)
@@ -109,7 +133,10 @@ inside the folder (any subdirectory works):
 
 ```sh
 zc project init [--group <name>] [--follow on|off] [--wa]  # prompts for anything missing
-zc project say "<text>"              # post an update to the project's group
+zc project say "<text>"              # post an update to the project's group (milestones)
+zc project say [--thread <name|id>] [--file <path>]... "<text>"
+                                     # files (photos as photos), caption on the first; --thread
+                                     # reuses that thread or creates it
 zc project status | sync | remove [--purge]
 zc project members | alias add|rm <member> <alias>
 zc project tasks [done|drop <id> | assign <id> <member>]
@@ -117,7 +144,12 @@ zc project follow on|off             # store messages + morning standup
 zc project standup now
 ```
 
-`init` writes the `.zcoms` file. Binding and turning groups on are owner actions: only run
+If the group cannot take a thread (WhatsApp, or topics off in a group this account did not create),
+text goes to the main chat and `--file` sends go to the owner's private chat with a note. On
+WhatsApp, post milestones only and send screenshots only when asked.
+
+`init` writes the `.zcoms` file, and `init`/`sync` write the routing rules into the repo's
+AGENTS.md/CLAUDE.md. Binding and turning groups on are owner actions: only run
 `project init`, `group on` or `config owner` when the user asks.
 
 ## Rules and gotchas
