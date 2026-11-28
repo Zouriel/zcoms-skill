@@ -76,6 +76,9 @@ zc tg pin @user 4821 --for-me                                  # private chat, o
 zc tg unpin "Acme build" last | zc tg unpin "Acme build" --all
 ```
 
+`zc tg send <chat> --keep "<text>"` sends a message that never disappears; `--pin [--silent]`
+also pins it (implies `--keep`, takes `--thread`, needs the daemon).
+
 Edit works on text messages you sent, within Telegram's edit window. Pinning in a group needs the
 pin right there. Prefer editing a status message you posted over sending a new one each step.
 
@@ -124,12 +127,19 @@ zc tg group topic "Acme build" "login bug"     # start a thread (forum topic); p
 zc tg group topics "Acme build"                # list threads (id, name)
 zc tg group topic-rename "Acme build" "login bug" "auth" # rename a thread (owner only)
 zc tg group create "Acme build" Ibrahim --topics  # create with threads on from the start
+zc tg group create "Acme build" Ibrahim --topics --disappear 7d  # disappearing messages on
+zc tg group disappear "Acme build" [1d|7d|2w|off] # show or set the timer
 ```
 
 Threads are Telegram forum topics. `group topic` turns topics on by itself only when this account
 created the group; otherwise an admin has to enable them in the group settings. Basic groups are
 never upgraded. WhatsApp groups have no threads: `zc wa group topic` says so, and a `--thread`
 send on WhatsApp goes to the group itself.
+
+**Disappearing messages** (Telegram) are one timer per group: every thread shares it, and it
+only applies to messages sent after it is set. Pinning does not save a message from it, so post
+anything that must stay with `zc tg send "<group>" --pin "<text>"` (sent outside the timer).
+Only change a group's timer when the user asks.
 
 Telegram groups are created as supergroups. Set the owner once with `zc config owner <contact>`
 (no argument shows it); it must be a contact in `zc contacts`.
