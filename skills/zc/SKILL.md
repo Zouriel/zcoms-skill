@@ -1,6 +1,6 @@
 ---
 name: zc
-description: Reach the user from the terminal using the `zc` CLI (zcoms), over Telegram (`zc tg`) and WhatsApp (`zc wa`). Send notifications, ask a question and block until they reply (Telegram), hold a scriptable back-and-forth, post updates to a project's group, create and read group chats, edit and pin sent messages, and send or download files. Use this whenever you need to tell the user a task finished or is blocked, get a decision you cannot proceed without while they are away from the keyboard, or have an ongoing conversation with them. Trigger it even when the user just says things like "let me know on Telegram", "text me when done", "message me on WhatsApp", "ask me on my phone", or "ping me if you get stuck".
+description: Reach the user from the terminal using the `zc` CLI (zcoms), over Telegram (`zc tg`) and WhatsApp (`zc wa`). Send notifications, ask a question and block until they reply (Telegram), hold a scriptable back-and-forth, post updates to a project's group, create and read group chats, edit, pin and delete messages, and send or download files. Use this whenever you need to tell the user a task finished or is blocked, get a decision you cannot proceed without while they are away from the keyboard, or have an ongoing conversation with them. Trigger it even when the user just says things like "let me know on Telegram", "text me when done", "message me on WhatsApp", "ask me on my phone", or "ping me if you get stuck".
 ---
 
 # zc: Telegram and WhatsApp channel to the user
@@ -65,7 +65,7 @@ zc tg send-file "Acme build" ./shot.png --thread 12 "screenshot" # thread by id 
 Files are capped at 20 MB; images go as photos, other files as documents. `--thread` takes a
 topic id or name (see `zc tg group topics`) and needs the daemon.
 
-**Edit and pin** (Telegram). Name a message by the `message_id` that `send` printed (or from
+**Edit, pin and delete** (Telegram). Name a message by the `message_id` that `send` printed (or from
 `chat --read N --json`), or `last` for the newest message you sent in that chat:
 
 ```sh
@@ -74,13 +74,16 @@ zc tg edit "Acme build" 4821 "deploy moved to 6pm"             # by message id
 zc tg pin "Acme build" last [--silent]                         # --silent: no notification
 zc tg pin @user 4821 --for-me                                  # private chat, only your side
 zc tg unpin "Acme build" last | zc tg unpin "Acme build" --all
+zc tg delete "Acme build" last                                 # delete for everyone
+zc tg delete "Acme build" 4821 4822                            # several by id
 ```
 
 `zc tg send <chat> --keep "<text>"` sends a message that never disappears; `--pin [--silent]`
 also pins it (implies `--keep`, takes `--thread`, needs the daemon).
 
 Edit works on text messages you sent, within Telegram's edit window. Pinning in a group needs the
-pin right there. Prefer editing a status message you posted over sending a new one each step.
+pin right there; deleting someone else's message needs the delete right. Deletes cannot be undone:
+only delete what the user asked you to. Prefer editing a status message you posted over sending a new one each step.
 
 `chat` flags: `-w/--wait` (default on), `-t/--timeout <dur>` (`0` = no limit), `-r/--read <N>`,
 `--json` (one line per message: `message_id`, `sender`, `kind`, `text`, `file`, `disappear_in`), `--download`.
@@ -128,7 +131,8 @@ zc tg group topics "Acme build"                # list threads (id, name)
 zc tg group topic-rename "Acme build" "login bug" "auth" # rename a thread (owner only)
 zc tg group create "Acme build" Ibrahim --topics  # create with threads on from the start
 zc tg group create "Acme build" Ibrahim --topics --disappear 7d  # disappearing messages on
-zc tg group disappear "Acme build" [1d|7d|2w|off] # show or set the timer
+zc tg group disappear "Acme build" [1d|7d|2w|off] # whole group: show or set the timer
+zc tg group disappear "Acme build" 12h --thread "standup"  # one thread only
 ```
 
 Threads are Telegram forum topics. `group topic` turns topics on by itself only when this account
@@ -136,8 +140,11 @@ created the group; otherwise an admin has to enable them in the group settings. 
 never upgraded. WhatsApp groups have no threads: `zc wa group topic` says so, and a `--thread`
 send on WhatsApp goes to the group itself.
 
-**Disappearing messages** (Telegram) are one timer per group: every thread shares it, and it
-only applies to messages sent after it is set. Pinning does not save a message from it, so post
+**Disappearing messages** (Telegram): Telegram's own timer covers the whole group (whole days,
+every thread). For one thread, use `--thread`: Telegram has no per-thread timer, so the comms
+daemon deletes that thread's messages once they are older than the timer (checked every minute;
+minutes and hours work too). Either way only messages sent after the timer is set are affected,
+and the bare `zc tg group disappear "<group>"` lists every timer. Pinning does not save a message from it, so post
 anything that must stay with `zc tg send "<group>" --pin "<text>"` (sent outside the timer).
 Only change a group's timer when the user asks.
 
@@ -150,8 +157,9 @@ it was called from. Callers can ask it to "start a thread for X": it opens one t
 and answers there. In project groups it can also send screenshots of the running app or repo files
 back to the caller (never secrets, at most 5 files of 20 MB).
 The owner and write-role members can also ask it to pin its answer, pin or unpin the message
-they replied to, or correct its last message in place; only the owner can have it turn
-disappearing messages on or off.
+they replied to, correct or delete its last message; only the owner can have it delete someone
+else's message or turn disappearing messages on or off (asked inside a thread it applies to that
+thread only).
 `zc group off "<group>"` stops it. Add `--wa` for a WhatsApp group.
 
 ## Projects (`zc project`)
