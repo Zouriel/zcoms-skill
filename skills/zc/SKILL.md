@@ -83,7 +83,7 @@ Edit works on text messages you sent, within Telegram's edit window. Pinning in 
 pin right there. Prefer editing a status message you posted over sending a new one each step.
 
 `chat` flags: `-w/--wait` (default on), `-t/--timeout <dur>` (`0` = no limit), `-r/--read <N>`,
-`--json` (one line per message: `message_id`, `sender`, `kind`, `text`, `file`), `--download`.
+`--json` (one line per message: `message_id`, `sender`, `kind`, `text`, `file`, `disappear_in`), `--download`.
 Prefer `chat --timeout` over `ask` when you want a bound. A non-text `ask` reply comes back as
 `[messageType]`; use `chat --json` to see details.
 
