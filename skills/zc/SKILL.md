@@ -1,6 +1,6 @@
 ---
 name: zc
-description: Reach the user from the terminal using the `zc` CLI (zcoms), over Telegram (`zc tg`) and WhatsApp (`zc wa`). Send notifications, ask a question and block until they reply (Telegram), hold a scriptable back-and-forth, post updates to a project's group, create and read group chats, and send or download files. Use this whenever you need to tell the user a task finished or is blocked, get a decision you cannot proceed without while they are away from the keyboard, or have an ongoing conversation with them. Trigger it even when the user just says things like "let me know on Telegram", "text me when done", "message me on WhatsApp", "ask me on my phone", or "ping me if you get stuck".
+description: Reach the user from the terminal using the `zc` CLI (zcoms), over Telegram (`zc tg`) and WhatsApp (`zc wa`). Send notifications, ask a question and block until they reply (Telegram), hold a scriptable back-and-forth, post updates to a project's group, create and read group chats, edit and pin sent messages, and send or download files. Use this whenever you need to tell the user a task finished or is blocked, get a decision you cannot proceed without while they are away from the keyboard, or have an ongoing conversation with them. Trigger it even when the user just says things like "let me know on Telegram", "text me when done", "message me on WhatsApp", "ask me on my phone", or "ping me if you get stuck".
 ---
 
 # zc: Telegram and WhatsApp channel to the user
@@ -65,6 +65,20 @@ zc tg send-file "Acme build" ./shot.png --thread 12 "screenshot" # thread by id 
 Files are capped at 20 MB; images go as photos, other files as documents. `--thread` takes a
 topic id or name (see `zc tg group topics`) and needs the daemon.
 
+**Edit and pin** (Telegram). Name a message by the `message_id` that `send` printed (or from
+`chat --read N --json`), or `last` for the newest message you sent in that chat:
+
+```sh
+zc tg edit @user last "build finished (all 212 tests green)"   # fix what you just sent
+zc tg edit "Acme build" 4821 "deploy moved to 6pm"             # by message id
+zc tg pin "Acme build" last [--silent]                         # --silent: no notification
+zc tg pin @user 4821 --for-me                                  # private chat, only your side
+zc tg unpin "Acme build" last | zc tg unpin "Acme build" --all
+```
+
+Edit works on text messages you sent, within Telegram's edit window. Pinning in a group needs the
+pin right there. Prefer editing a status message you posted over sending a new one each step.
+
 `chat` flags: `-w/--wait` (default on), `-t/--timeout <dur>` (`0` = no limit), `-r/--read <N>`,
 `--json` (one line per message: `message_id`, `sender`, `kind`, `text`, `file`), `--download`.
 Prefer `chat --timeout` over `ask` when you want a bound. A non-text `ask` reply comes back as
@@ -108,6 +122,7 @@ zc tg group view "Acme build" --follow         # stay attached: print new, send 
 zc tg send "Acme build" "deploy is green"      # plain send works by group name too
 zc tg group topic "Acme build" "login bug"     # start a thread (forum topic); prints its id
 zc tg group topics "Acme build"                # list threads (id, name)
+zc tg group topic-rename "Acme build" "login bug" "auth" # rename a thread (owner only)
 zc tg group create "Acme build" Ibrahim --topics  # create with threads on from the start
 ```
 
