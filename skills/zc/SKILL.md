@@ -149,6 +149,9 @@ call the agent (an @mention or a reply to it); it answers briefly, web search on
 it was called from. Callers can ask it to "start a thread for X": it opens one thread in that group
 and answers there. In project groups it can also send screenshots of the running app or repo files
 back to the caller (never secrets, at most 5 files of 20 MB).
+The owner and write-role members can also ask it to pin its answer, pin or unpin the message
+they replied to, or correct its last message in place; only the owner can have it turn
+disappearing messages on or off.
 `zc group off "<group>"` stops it. Add `--wa` for a WhatsApp group.
 
 ## Projects (`zc project`)
@@ -160,6 +163,7 @@ inside the folder (any subdirectory works):
 zc project init [--group <name>] [--follow on|off] [--wa]  # prompts for anything missing
 zc project say "<text>"              # post an update to the project's group (milestones)
 zc project say [--thread <name|id>] [--file <path>]... "<text>"
+zc project say --pin [--thread <name|id>] "<text>"  # pinned status that never disappears
                                      # files (photos as photos), caption on the first; --thread
                                      # reuses that thread or creates it
 zc project status | sync | remove [--purge]
